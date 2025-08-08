@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import io
+import altair as alt
 
 # ========================
 # PAGE CONFIG
@@ -100,6 +101,9 @@ df["€ per Vehicle"] = df["Grand Total"] / df["Vehicles"]
 df["€ per User"] = df["Grand Total"] / df["Users"]
 df["€ per Customer"] = df["Grand Total"] / df["Customers"]
 
+# Add a proper datetime column for year-only axis formatting in charts
+df["YearDate"] = pd.to_datetime(df["Year"].astype(str), format="%Y")
+
 # ========================
 # MAIN PAGE
 # ========================
@@ -111,12 +115,62 @@ tab1, tab2 = st.tabs(["Total Cost Overview", "Individual Components"])
 
 with tab1:
     st.subheader("Total Costs Over Time")
-    st.area_chart(df.set_index("Year")[["Total Infrastructure", "Total Staff", "Grand Total"]])
+    chart_df = df[[
+        "YearDate",
+        "Total Infrastructure",
+        "Total Staff",
+        "Grand Total",
+    ]]
+
+    chart_long = chart_df.melt(
+        id_vars=["YearDate"],
+        value_vars=["Total Infrastructure", "Total Staff", "Grand Total"],
+        var_name="Category",
+        value_name="Value",
+    )
+
+    area = (
+        alt.Chart(chart_long)
+        .mark_area(opacity=0.6)
+        .encode(
+            x=alt.X("YearDate:T", 
+                    axis=alt.Axis(format="%Y", title=None, tickCount=len(df))),
+            y=alt.Y("Value:Q", title="€"),
+            color=alt.Color("Category:N", legend=alt.Legend(title=None)),
+            tooltip=[
+                alt.Tooltip("year(YearDate):O", title="Year"),
+                alt.Tooltip("Category:N"),
+                alt.Tooltip("Value:Q", format=",.0f", title="Amount (€)"),
+            ],
+        )
+        .properties(height=350)
+    )
+
+    st.altair_chart(area, use_container_width=True)
 
 with tab2:
     st.subheader("Cost Components Over Time")
     for col in infra_cols + staff_cols:
-        st.line_chart(df.set_index("Year")[[col]])
+        # Create chart data for this component
+        component_df = df[["YearDate", col]]
+        
+        # Create Altair line chart with proper year formatting
+        line_chart = (
+            alt.Chart(component_df)
+            .mark_line(point=True)
+            .encode(
+                x=alt.X("YearDate:T", 
+                        axis=alt.Axis(format="%Y", title=None, tickCount=len(df))),
+                y=alt.Y(f"{col}:Q", title="€"),
+                tooltip=[
+                    alt.Tooltip("year(YearDate):O", title="Year"),
+                    alt.Tooltip(f"{col}:Q", format=",.0f", title="Amount (€)"),
+                ],
+            )
+            .properties(height=250, title=col)
+        )
+        
+        st.altair_chart(line_chart, use_container_width=True)
 
 st.markdown("### Forecast Table")
 st.dataframe(df.style.format({
